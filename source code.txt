@@ -1,0 +1,391 @@
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.model_selection import train_test_split
+
+# Step 1: Load the dataset
+df = pd.read_csv("movie dataset.csv.csv")
+
+# Step 2: Quick data inspection
+print("Dataset shape:", df.shape)
+print(df.head())
+print(df.info())
+print(df.isnull().sum())
+
+# Step 3: Handle missing values (example)
+df = df.dropna(subset=['movie_id', 'genre_preference_user'])  # Drop rows where title or genres are missing
+df.fillna('', inplace=True)  # Replace other missing values with empty strings
+
+# Step 4: Process 'genres' column if it's string separated by "|"
+# Convert genre strings to lists
+df['genre_preference_user'] = df['genre_preference_user'].apply(lambda x: x.split('|') if isinstance(x, str) else [])
+
+# One-hot encode genres
+mlb = MultiLabelBinarizer()
+genre_encoded = mlb.fit_transform(df['genre_preference_user'])
+genre_df = pd.DataFrame(genre_encoded, columns=mlb.classes_)
+df = pd.concat([df, genre_df], axis=1)
+
+# Step 5: Optional - TF-IDF vectorization on overview or description if available
+if 'overview' in df.columns:
+    tfidf = TfidfVectorizer(stop_words='english', max_features=5000)
+    tfidf_matrix = tfidf.fit_transform(df['overview'].fillna(''))
+else:
+    tfidf_matrix = None
+
+# Step 6: User-item interaction data (e.g., ratings)
+# If a user-ratings matrix exists or another file provides user preferences, load and merge it
+# For now, placeholder if you have 'userId', 'movieId', and 'rating' columns:
+if {'userId', 'movieId', 'rating'}.issubset(df.columns):
+    user_ratings = df[['userId', 'movieId', 'rating']]
+    print("User ratings preview:")
+    print(user_ratings.head())
+
+# Save preprocessed data if needed
+df.to_csv("processed_movie_dataset.csv", index=False)
+
+print("Preprocessing complete.")
+# Step 1: Upload and read the dataset
+from google.colab import files
+uploaded = files.upload()
+
+import pandas as pd
+import matplotlib.pyplot as plt
+
+# Step 2: Load CSV
+filename = list(uploaded.keys())[0]
+df = pd.read_csv('movie dataset.csv.csv')
+
+# Step 3: Basic info
+print("✅ Dataset loaded successfully!\n")
+print("Columns:", df.columns.tolist())
+print("Shape:", df.shape)
+print("\nPreview:")
+print(df.head())
+
+# Step 4: Rating distribution
+plt.figure(figsize=(6, 4))
+df['rating'].value_counts().sort_index().plot(kind='bar', color='skyblue', edgecolor='black')
+plt.title('Rating Distribution')
+plt.xlabel('Rating')
+plt.ylabel('Count')
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.show()
+
+# Step 5: Count frequency of genres (as text, not parsed lists)
+genre_counts = {}
+for g_list in df['genre_preference_user']:
+    for genre in g_list.strip("[]").replace("'", "").split(','):
+        genre = genre.strip()
+        if genre:
+            genre_counts[genre] = genre_counts.get(genre, 0) + 1
+
+# Plot genre frequencies
+plt.figure(figsize=(8, 5))
+plt.barh(list(genre_counts.keys()), list(genre_counts.values()), color='coral')
+plt.title('User Genre Preferences')
+plt.xlabel('Count')
+plt.ylabel('Genre')
+plt.grid(axis='x', linestyle='--', alpha=0.6)
+plt.show()
+
+# Step 6: Most common keywords (simplified version)
+keyword_counts = {}
+for kw_list in df['keywords_movie']:
+    for kw in kw_list.strip("[]").replace("'", "").split(','):
+        kw = kw.strip()
+        if kw:
+            keyword_counts[kw] = keyword_counts.get(kw, 0) + 1
+
+top_keywords = sorted(keyword_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+
+# Plot top keywords
+plt.figure(figsize=(8, 5))
+plt.barh([k[0] for k in top_keywords], [k[1] for k in top_keywords], color='mediumseagreen')
+plt.title('Top 10 Movie Keywords')
+plt.xlabel('Count')
+plt.ylabel('Keyword')
+plt.grid(axis='x', linestyle='--', alpha=0.6)
+plt.show()
+
+# Step 7: Average rating per user
+avg_ratings = df.groupby('user_id')['rating'].mean()
+
+plt.figure(figsize=(8, 4))
+avg_ratings.plot(kind='bar', color='slateblue')
+plt.title('Average Rating by User')
+plt.xlabel('User ID')
+plt.ylabel('Average Rating')
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.show()
+import pandas as pd
+from sklearn.preprocessing import MultiLabelBinarizer
+
+# 1. Load dataset
+df = pd.read_csv("movie dataset.csv.csv")
+
+# 2. Convert string lists into Python lists
+def str_to_list(x):
+    if pd.isna(x):
+        return []
+    if isinstance(x, list):
+        return x
+    # Remove extra spaces and quotes, then split by comma if applicable
+    if isinstance(x, str):
+        try:
+            # Try eval first (safe if strings are list representations)
+            import ast
+            return ast.literal_eval(x)
+        except:
+            # fallback: split by comma and strip whitespace
+            return [item.strip() for item in x.strip("[]").split(",")]
+    return []
+
+df['genre_preference_user'] = df['genre_preference_user'].apply(str_to_list)
+df['keywords_movie'] = df['keywords_movie'].apply(str_to_list)
+
+# 3. Calculate overlap score between user genres and movie keywords
+def calc_overlap(genres, keywords):
+    return len(set(genres).intersection(set(keywords)))
+
+df['keyword_overlap_score'] = df.apply(lambda row: calc_overlap(row['genre_preference_user'], row['keywords_movie']), axis=1)
+
+# 4. Calculate user average rating and rating count
+user_stats = df.groupby('user_id')['rating'].agg(['mean', 'count']).reset_index()
+user_stats.columns = ['user_id', 'user_avg_rating', 'user_rating_count']
+df = df.merge(user_stats, on='user_id', how='left')
+
+# 5. Calculate movie average rating and rating count
+movie_stats = df.groupby('movie_id')['rating'].agg(['mean', 'count']).reset_index()
+movie_stats.columns = ['movie_id', 'movie_avg_rating', 'movie_rating_count']
+df = df.merge(movie_stats, on='movie_id', how='left')
+
+# 6. One-hot encode genres
+mlb = MultiLabelBinarizer()
+genre_encoded = mlb.fit_transform(df['genre_preference_user'])
+genre_cols = [f"genre_{g}" for g in mlb.classes_]
+genre_df = pd.DataFrame(genre_encoded, columns=genre_cols)
+
+df = pd.concat([df.reset_index(drop=True), genre_df], axis=1)
+import pandas as pd
+import ast
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.metrics import mean_squared_error, r2_score
+
+# Step 1: Load dataset
+df = pd.read_csv("movie dataset.csv.csv")
+
+# Step 2: Clean list-type columns
+def parse_list(x):
+    if pd.isna(x):
+        return []
+    try:
+        return ast.literal_eval(x)
+    except:
+        return [item.strip().strip("'\"") for item in x.strip("[]").split(",")]
+
+df['genre_preference_user'] = df['genre_preference_user'].apply(parse_list)
+df['keywords_movie'] = df['keywords_movie'].apply(parse_list)
+
+# Step 3: Add keyword overlap score
+def calc_overlap(genres, keywords):
+    return len(set(genres).intersection(set(keywords)))
+
+df['keyword_overlap_score'] = df.apply(lambda row: calc_overlap(row['genre_preference_user'], row['keywords_movie']), axis=1)
+
+# Step 4: Add user statistics
+user_stats = df.groupby('user_id')['rating'].agg(['mean', 'count']).reset_index()
+user_stats.columns = ['user_id', 'user_avg_rating', 'user_rating_count']
+df = df.merge(user_stats, on='user_id', how='left')
+
+# Step 5: Add movie statistics
+movie_stats = df.groupby('movie_id')['rating'].agg(['mean', 'count']).reset_index()
+movie_stats.columns = ['movie_id', 'movie_avg_rating', 'movie_rating_count']
+df = df.merge(movie_stats, on='movie_id', how='left')
+
+# Step 6: One-hot encode genre preferences
+mlb = MultiLabelBinarizer()
+genre_matrix = mlb.fit_transform(df['genre_preference_user'])
+genre_df = pd.DataFrame(genre_matrix, columns=[f'genre_{g}' for g in mlb.classes_])
+df = pd.concat([df.reset_index(drop=True), genre_df], axis=1)
+
+# Step 7: Define features and target
+feature_columns = ['keyword_overlap_score', 'user_avg_rating', 'user_rating_count',
+                   'movie_avg_rating', 'movie_rating_count'] + list(genre_df.columns)
+
+X = df[feature_columns]
+y = df['rating']
+
+# Step 8: Train/test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Step 9: Train model
+model = RandomForestRegressor(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+# Step 10: Predict and evaluate
+y_pred = model.predict(X_test)
+# Calculate Mean Squared Error (MSE)
+mse = mean_squared_error(y_test, y_pred)
+# Calculate Root Mean Squared Error (RMSE) by taking the square root of MSE
+rmse = mse**0.5
+r2 = r2_score(y_test, y_pred)
+
+print("✅ Model Evaluation")
+print(f"RMSE: {rmse:.2f}")
+print(f"R² Score: {r2:.2f}")
+import pandas as pd
+import ast
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.metrics import mean_squared_error, r2_score
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Step 1: Load your dataset
+df = pd.read_csv("movie dataset.csv.csv")
+
+# Step 2: Parse stringified lists
+def parse_list(x):
+    if pd.isna(x):
+        return []
+    try:
+        return ast.literal_eval(x)
+    except:
+        return [item.strip().strip("'\"") for item in x.strip("[]").split(",")]
+
+df['genre_preference_user'] = df['genre_preference_user'].apply(parse_list)
+df['keywords_movie'] = df['keywords_movie'].apply(parse_list)
+
+# Step 3: Feature engineering
+def calc_overlap(genres, keywords):
+    return len(set(genres).intersection(set(keywords)))
+
+df['keyword_overlap_score'] = df.apply(lambda row: calc_overlap(row['genre_preference_user'], row['keywords_movie']), axis=1)
+
+user_stats = df.groupby('user_id')['rating'].agg(['mean', 'count']).reset_index()
+user_stats.columns = ['user_id', 'user_avg_rating', 'user_rating_count']
+df = df.merge(user_stats, on='user_id', how='left')
+
+movie_stats = df.groupby('movie_id')['rating'].agg(['mean', 'count']).reset_index()
+movie_stats.columns = ['movie_id', 'movie_avg_rating', 'movie_rating_count']
+df = df.merge(movie_stats, on='movie_id', how='left')
+
+mlb = MultiLabelBinarizer()
+genre_matrix = mlb.fit_transform(df['genre_preference_user'])
+genre_df = pd.DataFrame(genre_matrix, columns=[f'genre_{g}' for g in mlb.classes_])
+df = pd.concat([df.reset_index(drop=True), genre_df], axis=1)
+
+# Step 4: Prepare model data
+features = ['keyword_overlap_score', 'user_avg_rating', 'user_rating_count',
+            'movie_avg_rating', 'movie_rating_count'] + list(genre_df.columns)
+X = df[features]
+y = df['rating']
+
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Step 5: Train model
+model = RandomForestRegressor(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+
+# Step 6: Evaluate model
+y_pred = model.predict(X_test)
+# Calculate MSE first
+mse = mean_squared_error(y_test, y_pred)
+# Then calculate RMSE by taking the square root of MSE
+rmse = mse**0.5
+r2 = r2_score(y_test, y_pred)
+
+print("📊 Model Evaluation Metrics")
+print(f"✅ RMSE: {rmse:.2f}")
+print(f"✅ R² Score: {r2:.2f}")
+
+# Step 7: Plots
+# Actual vs Predicted
+plt.figure(figsize=(8, 6))
+sns.scatterplot(x=y_test, y=y_pred, alpha=0.6)
+plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+plt.xlabel("Actual Ratings")
+plt.ylabel("Predicted Ratings")
+plt.title("Actual vs Predicted Ratings")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# Residuals plot
+residuals = y_test - y_pred
+plt.figure(figsize=(8, 6))
+sns.histplot(residuals, bins=30, kde=True, color='coral')
+plt.title("Residuals Distribution (Actual - Predicted Ratings)")
+plt.xlabel("Residual")
+plt.ylabel("Frequency")
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+import gradio as gr
+
+# Load the dataset
+df = pd.read_csv("movie dataset.csv.csv")
+
+# Fill missing values and create combined text features
+df['genre_preference_user'] = df['genre_preference_user'].fillna('')
+df['keywords_movie'] = df['keywords_movie'].fillna('')
+df['combined_features'] = df['keywords_movie'] + ' ' + df['genre_preference_user']
+
+# Create TF-IDF vectors for combined features
+vectorizer = TfidfVectorizer(stop_words='english')
+tfidf_matrix = vectorizer.fit_transform(df['combined_features'])
+
+# Map user_id to their genre preference (for recommendation)
+user_preferences = df.groupby('user_id')['genre_preference_user'].first().to_dict()
+
+def recommend_movies(user_id, top_n=5):
+    try:
+        user_id = int(user_id)
+    except:
+        return "Please enter a valid numeric User ID."
+
+    if user_id not in user_preferences:
+        return f"User ID {user_id} not found."
+
+    # Vectorize user's genre preference
+    user_genre = user_preferences[user_id]
+    user_vector = vectorizer.transform([user_genre])
+
+    # Calculate cosine similarity between user preference and all movies
+    similarities = cosine_similarity(user_vector, tfidf_matrix).flatten()
+
+    # Add similarity scores to dataframe and sort by descending similarity
+    df['similarity'] = similarities
+
+    # Filter duplicates on movie_id and exclude movies already rated by user
+    user_movies = df[df['user_id'] == user_id]['movie_id'].unique()
+    recommendations = df[~df['movie_id'].isin(user_movies)] \
+        .sort_values(by='similarity', ascending=False) \
+        .drop_duplicates(subset='movie_id') \
+        .head(top_n)
+
+    # Select relevant columns to display
+    return recommendations[['movie_id', 'keywords_movie', 'genre_preference_user', 'similarity']]
+
+# Create Gradio interface
+interface = gr.Interface(
+    fn=recommend_movies,
+    inputs=gr.Textbox(label="Enter User ID"),
+    outputs=gr.Dataframe(label="Recommended Movies"),
+    title="AI-Powered Movie Recommendation System",
+    description="Get personalized movie recommendations based on your genre preferences."
+)
+
+if __name__ == "__main__":
+    interface.launch()
+
+
